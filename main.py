@@ -251,12 +251,48 @@ def push_to_push_plus(exec_results, summary):
         if len(exec_results) >= PUSH_PLUS_MAX:
             content += "账号数量过多，详细情况请前往github actions中查看"
         else:
+            # 限制IYUU推送内容长度，如果内容过长则优先显示成功结果
+            success_results = []
+            failed_results = []
             for exec_result in exec_results:
                 success = exec_result['success']
                 if success is not None and success is True:
-                    content += f"账号：{exec_result['user']} 刷步数成功，接口返回：{exec_result['msg']}\n"
+                    success_results.append(f"账号：{exec_result['user']} 刷步数成功，接口返回：{exec_result['msg']}\n")
                 else:
-                    content += f"账号：{exec_result['user']} 刷步数失败，失败原因：{exec_result['msg']}\n"
+                    failed_results.append(f"账号：{exec_result['user']} 刷步数失败，失败原因：{exec_result['msg']}\n")
+            
+            # 先尝试添加成功结果
+            temp_content = content
+            added_count = 0
+            for result in success_results:
+                if len(temp_content + result) > 4500:  # 留出一些余量给summary和其他内容
+                    # 如果单个结果太长，尝试截断它
+                    available_space = 4500 - len(temp_content)
+                    if available_space > 50:  # 确保有足够空间
+                        truncated_result = result[:available_space] + "...\n"
+                        temp_content += truncated_result
+                        added_count += 1
+                    break
+                temp_content += result
+                added_count += 1
+            
+            # 如果还有空间，再添加失败结果
+            for result in failed_results:
+                if len(temp_content + result) > 4500:
+                    # 如果空间不够，尝试截断结果
+                    available_space = 4500 - len(temp_content)
+                    if available_space > 50:  # 确保有足够空间
+                        truncated_result = result[:available_space] + "...\n"
+                        temp_content += truncated_result
+                        added_count += 1
+                    break
+                temp_content += result
+                added_count += 1
+            
+            content = temp_content
+            # 如果不是所有结果都被包含，添加提示
+            if len(success_results) + len(failed_results) > added_count:
+                content += "\n[部分结果因长度限制未显示，详情请查看日志]"
         iyuu_push(text, content)
 
 
