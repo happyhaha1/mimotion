@@ -14,6 +14,7 @@ import os
 import requests
 from util.aes_help import  encrypt_data, decrypt_data
 import util.zepp_helper as zeppHelper
+from iyuu import send_iyuu_notification
 
 # 获取默认值转int
 def get_int_value_default(_config: dict, _key, default):
@@ -102,6 +103,18 @@ def push_plus(title, content):
     except:
         print("pushplus推送异常")
 
+
+# IYUU消息推送
+def iyuu_push(title, content):
+    if IYUU_TOKEN is not None and IYUU_TOKEN != '' and IYUU_TOKEN != 'NO':
+        try:
+            response = send_iyuu_notification(IYUU_TOKEN, title, content)
+            if 'errmsg' not in response or response.get('errcode', -1) == 0:
+                print(f"IYUU推送完毕：{response}")
+            else:
+                print(f"IYUU推送失败：{response.get('errmsg', 'Unknown error')}")
+        except Exception as e:
+            print(f"IYUU推送异常：{str(e)}")
 
 class MiMotionRunner:
     def __init__(self, _user, _passwd):
@@ -230,6 +243,22 @@ def push_to_push_plus(exec_results, summary):
             html += '</ul>'
         push_plus(f"{format_now()} 刷步数通知", html)
 
+    # 判断是否需要IYUU推送
+    if IYUU_TOKEN is not None and IYUU_TOKEN != '' and IYUU_TOKEN != 'NO':
+        # IYUU不支持HTML格式，使用纯文本格式
+        text = f"刷步数通知 - {format_now()}"
+        content = f"{summary}\n\n"
+        if len(exec_results) >= PUSH_PLUS_MAX:
+            content += "账号数量过多，详细情况请前往github actions中查看"
+        else:
+            for exec_result in exec_results:
+                success = exec_result['success']
+                if success is not None and success is True:
+                    content += f"账号：{exec_result['user']} 刷步数成功，接口返回：{exec_result['msg']}\n"
+                else:
+                    content += f"账号：{exec_result['user']} 刷步数失败，失败原因：{exec_result['msg']}\n"
+        iyuu_push(text, content)
+
 
 def run_single_account(total, idx, user_mi, passwd_mi):
     idx_info = ""
@@ -340,6 +369,7 @@ if __name__ == "__main__":
         PUSH_PLUS_TOKEN = config.get('PUSH_PLUS_TOKEN')
         PUSH_PLUS_HOUR = config.get('PUSH_PLUS_HOUR')
         PUSH_PLUS_MAX = get_int_value_default(config, 'PUSH_PLUS_MAX', 30)
+        IYUU_TOKEN = config.get('IYUU_TOKEN')
         sleep_seconds = config.get('SLEEP_GAP')
         if sleep_seconds is None or sleep_seconds == '':
             sleep_seconds = 5
