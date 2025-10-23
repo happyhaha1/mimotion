@@ -221,6 +221,19 @@ class MiMotionRunner:
         return f"修改步数（{step}）[" + msg + "]", ok
 
 
+# 判断是否应该发送通知
+def should_send_notification(current_count, total_count, batch_size=50):
+    """
+    判断是否应该发送通知
+    :param current_count: 当前已执行的账号数
+    :param total_count: 总账号数
+    :param batch_size: 批次大小，默认50
+    :return: 是否发送通知
+    """
+    # 每批次发送一次，或者是最后一批
+    return current_count % batch_size == 0 or current_count == total_count
+
+
 # 启动主函数
 def push_to_push_plus(exec_results, summary):
     # 判断是否需要pushplus推送
@@ -251,48 +264,12 @@ def push_to_push_plus(exec_results, summary):
         if len(exec_results) >= PUSH_PLUS_MAX:
             content += "账号数量过多，详细情况请前往github actions中查看"
         else:
-            # 限制IYUU推送内容长度，如果内容过长则优先显示成功结果
-            success_results = []
-            failed_results = []
             for exec_result in exec_results:
                 success = exec_result['success']
                 if success is not None and success is True:
-                    success_results.append(f"账号：{exec_result['user']} 刷步数成功，接口返回：{exec_result['msg']}\n")
+                    content += f"账号：{exec_result['user']} 刷步数成功，接口返回：{exec_result['msg']}\n"
                 else:
-                    failed_results.append(f"账号：{exec_result['user']} 刷步数失败，失败原因：{exec_result['msg']}\n")
-            
-            # 先尝试添加成功结果
-            temp_content = content
-            added_count = 0
-            for result in success_results:
-                if len(temp_content + result) > 4500:  # 留出一些余量给summary和其他内容
-                    # 如果单个结果太长，尝试截断它
-                    available_space = 4500 - len(temp_content)
-                    if available_space > 50:  # 确保有足够空间
-                        truncated_result = result[:available_space] + "...\n"
-                        temp_content += truncated_result
-                        added_count += 1
-                    break
-                temp_content += result
-                added_count += 1
-            
-            # 如果还有空间，再添加失败结果
-            for result in failed_results:
-                if len(temp_content + result) > 4500:
-                    # 如果空间不够，尝试截断结果
-                    available_space = 4500 - len(temp_content)
-                    if available_space > 50:  # 确保有足够空间
-                        truncated_result = result[:available_space] + "...\n"
-                        temp_content += truncated_result
-                        added_count += 1
-                    break
-                temp_content += result
-                added_count += 1
-            
-            content = temp_content
-            # 如果不是所有结果都被包含，添加提示
-            if len(success_results) + len(failed_results) > added_count:
-                content += "\n[部分结果因长度限制未显示，详情请查看日志]"
+                    content += f"账号：{exec_result['user']} 刷步数失败，失败原因：{exec_result['msg']}\n"
         iyuu_push(text, content)
 
 
@@ -321,31 +298,47 @@ def execute():
     user_list = users.split('#')
     passwd_list = passwords.split('#')
     exec_results = []
+    batch_size = get_int_value_default(config, 'NOTIFY_BATCH_SIZE', 50)  # 新增配置项
+    
     if len(user_list) == len(passwd_list):
         idx, total = 0, len(user_list)
         if use_concurrent:
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                exec_results = executor.map(lambda x: run_single_account(total, x[0], *x[1]),
-                                            enumerate(zip(user_list, passwd_list)))
+                exec_results = list(executor.map(lambda x: run_single_account(total, x[0], *x[1]),
+                                            enumerate(zip(user_list, passwd_list))))
         else:
             for user_mi, passwd_mi in zip(user_list, passwd_list):
                 exec_results.append(run_single_account(total, idx, user_mi, passwd_mi))
                 idx += 1
+                
+                # 检查是否需要发送通知
+                if should_send_notification(idx, total, batch_size):
+                    success_count = sum(1 for r in exec_results if r['success'] is True)
+                    summary = f"\n批次通知 [{idx}/{total}] - 成功：{success_count}，失败：{idx - success_count}"
+                    print(summary)
+                    push_to_push_plus(exec_results[-batch_size:] if idx >= batch_size else exec_results, summary)
+                
                 if idx < total:
-                    # 每个账号之间间隔一定时间请求一次，避免接口请求过于频繁导致异常
                     time.sleep(sleep_seconds)
+        
         if encrypt_support:
             persist_user_tokens()
-        success_count = 0
-        push_results = []
-        for result in exec_results:
-            push_results.append(result)
-            if result['success'] is True:
-                success_count += 1
-        summary = f"\n执行账号总数{total}，成功：{success_count}，失败：{total - success_count}"
-        print(summary)
-        push_to_push_plus(push_results, summary)
+        
+        # 最终汇总（如果使用并发执行）
+        if use_concurrent:
+            success_count = sum(1 for r in exec_results if r['success'] is True)
+            summary = f"\n执行账号总数{total}，成功：{success_count}，失败：{total - success_count}"
+            print(summary)
+            
+            # 分批推送结果
+            for i in range(0, len(exec_results), batch_size):
+                batch_results = exec_results[i:i+batch_size]
+                batch_success = sum(1 for r in batch_results if r['success'] is True)
+                batch_summary = f"\n批次 [{i+1}-{min(i+batch_size, total)}/{total}] - 成功：{batch_success}，失败：{len(batch_results) - batch_success}"
+                push_to_push_plus(batch_results, batch_summary)
+                if i + batch_size < len(exec_results):
+                    time.sleep(2)  # 批次间间隔
     else:
         print(f"账号数长度[{len(user_list)}]和密码数长度[{len(passwd_list)}]不匹配，跳过执行")
         exit(1)
