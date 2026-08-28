@@ -1,15 +1,45 @@
 name: 刷步数
 
 on:
+  # 只使用稳定的小时触发器；随机分钟在“随机等待”步骤中生成，避免运行时改写 schedule。
   schedule:
-    - cron: '52 1,4,8,9,12,14,23 * * *'
+    - cron: '5 1,4,8,9,12,14,23 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: mimotion-step-count
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
+      - name: 随机等待
+        if: github.event_name == 'schedule'
+        id: random-delay
+        shell: bash
+        run: |
+          # 固定触发在每小时第 5 分钟，随机目标限制在 5-50 分钟，
+          # 给相邻小时的任务和 Git push 留出缓冲时间。
+          min_target_minute=5
+          max_target_minute=50
+          target_minute=$((min_target_minute + RANDOM % (max_target_minute - min_target_minute + 1)))
+          current_minute=$(date -u '+%M')
+          current_second=$(date -u '+%S')
+          current_minute=$((10#$current_minute))
+          current_second=$((10#$current_second))
+          wait_seconds=0
+          if (( current_minute < target_minute )); then
+            wait_seconds=$(( (target_minute - current_minute) * 60 - current_second ))
+            if (( wait_seconds > 0 )); then
+              sleep "$wait_seconds"
+            fi
+          fi
+          echo "target_minute=${target_minute}" >> "$GITHUB_OUTPUT"
+          echo "wait_seconds=${wait_seconds}" >> "$GITHUB_OUTPUT"
+          echo "随机目标时间：${target_minute} 分，等待 ${wait_seconds} 秒"
+
       - name: Checkout codes
         uses: actions/checkout@v5
         with:
@@ -31,6 +61,27 @@ jobs:
         run: |
           pip3 install requests pytz pycryptodome
           python3 main.py
+
+      - name: 记录执行时间
+        if: success()
+        env:
+          RANDOM_TARGET_MINUTE: ${{ steps.random-delay.outputs.target_minute }}
+          RANDOM_WAIT_SECONDS: ${{ steps.random-delay.outputs.wait_seconds }}
+        shell: bash
+        run: |
+          {
+            echo "trigger by: ${{ github.event_name }}"
+            echo "current system time:"
+            TZ=UTC date '+UTC: %y-%m-%d %H:%M:%S'
+            TZ=Asia/Shanghai date '+北京时间: %y-%m-%d %H:%M:%S'
+            echo "stable cron: '5 1,4,8,9,12,14,23 * * *'"
+            if [[ -n "$RANDOM_TARGET_MINUTE" ]]; then
+              echo "random target minute: $RANDOM_TARGET_MINUTE"
+              echo "random wait seconds: $RANDOM_WAIT_SECONDS"
+            else
+              echo "random target minute: manual dispatch (no wait)"
+            fi
+          } > cron_change_time
 
       - name: persist tokens
         run: |

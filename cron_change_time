@@ -1,11 +1,2 @@
-trigger by: workflow_run
-current system time:
-UTC: 26-08-28 07:04:02
-北京时间: 26-08-28 15:04:02
-current cron:
-UTC时间: '19 1,4,8,9,12,14,23 * * *'
-北京时间: '19 9,12,16,17,20,22,7 * * *'
-next cron:
-UTC时间: '52 1,4,8,9,12,14,23 * * *'
-北京时间: '52 9,12,16,17,20,22,7 * * *'
-next exec time: UTC(8:52) 北京时间(16:52)
+此文件由 .github/workflows/run.yml 在每次成功执行后自动更新。
+随机分钟不再通过修改 GitHub Actions 的 schedule 实现，而是在工作流内部随机等待。

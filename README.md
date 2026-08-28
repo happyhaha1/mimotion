@@ -26,18 +26,16 @@
 - 填写token的名称，用于自己区别干嘛用的。
 - 选择token有效期，最大时长为1年。一年后需要重新续期或重建，唯一缺点
 - `Repository access` 选择 `Only select repositories` 勾选自己fork后的仓库，下拉可搜索：输入 mimotion 进行检索
-- 点击 `Repository permissions` 展开菜单，并勾选以下四个权限即可，其他的可以不勾选
-  - `Actions` Access: `Read and write` 用于获取Actions的权限
-  - `Contents` Access: `Read and write` 用于更新定时任务和日志文件的权限
+- 点击 `Repository permissions` 展开菜单，并勾选以下两个权限即可，其他的可以不勾选
+  - `Contents` Access: `Read and write` 用于保存加密token和日志文件
   - `Metadata` Access: `Read-only` 这个自带的必选
-  - `Workflows` Access: `Read and write` 获取用于更新 `.github/workflow` 下文件的权限
 
 #### 你也可以创建更大权限的不限时token
 
 - 建议使用上面的小权限token，这个token无法指定某一个仓库的权限，也就是token一旦泄露将有可能导致其他人直接自由访问和修改你的所有仓库代码
 - 前往[https://github.com/settings/tokens/new](https://github.com/settings/tokens/new)创建
 - 填写token名称，选择有效期
-- `Select scopes` 勾选 `repo` 和 `workflow` 即可
+- `Select scopes` 勾选 `repo` 即可
 
 #### 创建完毕后点击最底下的 `Generate token` 即可生成token，复制token并自己保存一下以备后续使用，关闭当前页面后将无法再看到它。
 
@@ -51,7 +49,7 @@
 
 #### 添加名为 **PAT** 的Secret变量，值为第一步申请的token
 
-- `PAT` 的作用是拿来更新随机执行时间以及加密token数据的，为了保证正常使用，一定要配置正确。
+- `PAT` 的作用是保存加密token数据和执行日志，为了保证正常使用，一定要配置正确。
 
 #### 添加名为 **AES_KEY** 的Secret变量，请自行创建一个长度为16个字符的字符串作为密钥
 
@@ -114,25 +112,18 @@
 
 ### 四、自定义启动时间
 
-#### 两种方式自定义启动时间
+编辑 **.github/workflows/run.yml** 中的 cron 表达式：
 
-##### 1、添加名为 `CRON_HOURS` 的Variables变量 `Settings-->Secrets and variables-->Actions-->New repository variables` 注意不是Secret
-- 快捷跳转地址 [https://github.com/${你的github用户名}/mimotion/settings/variables/actions](../../settings/variables/actions)
-  - 填写自动执行的时间，单位为小时，此处需要设置UTC时间，例如设置 `0,2,4,6,8,14` 则会在北京时间 `8,10,12,14,16,22` 点触发执行
-- 添加完成后可以在Actions中手动触发：`Random Cron` 来触发替换，或者等下一次定时执行时它将会自动替换。
-
-##### 2、编辑 **.github/workflows/run.yml** 中的cron表达式
-  - cron表达式格式如下: `分 小时 日期 月份 年份`
-  - github actions中执行时间为UTC时间，即**北京时间-8**，如果需要每天`8，10，12，14，16，22`点执行，则设置cron为`0 0,2,4,6,8,14 * * *`
+- cron 表达式格式为 `分 小时 日期 月份 星期`。
+- GitHub Actions 使用 UTC 时间，即**北京时间 - 8**。例如每天北京时间 `7、9、12、16、17、20、22` 点执行，对应：
   ```yaml
   on:
     schedule:
-      - cron: '0 0,2,4,6,8,14 * * *'
+      - cron: '5 1,4,8,9,12,14,23 * * *'
   ```
-  - **注意** 如果已添加 `CRON_HOURS` 变量，则修改此文件的cron表达式会失效，在下次执行 `Random Cron` 后表达式中小时的部分会被覆盖为 `CRON_HOURS` 配置的值
-
-- 注意以上两种方式二选一即可，推荐直接使用方式1，变量值填写的是逗号分隔的数字，别乱填别的报错别找我！
-- github actions 0点为执行高峰，排队可能会延后一两小时才执行，建议直接从2开始
+- 分钟固定为 `5`，工作流启动后会在当前小时的 `5-50` 分钟之间随机等待，因此不要再通过提交修改 cron 的方式随机化。
+- `CRON_HOURS` 变量和 `Random Cron` 工作流已不再使用；修改小时列表后提交到默认分支即可。
+- GitHub Actions 可能因为资源排队延迟执行，cron 不是严格准点定时器。
 
 ### 五、手动触发测试工作流
 
@@ -155,8 +146,7 @@
 
 ## 注意事项
 
-1. 默认每天运行6+次，由run.yml中的cron控制，分钟为随机值，执行后自动更新分钟值，随机后可能当前整点二次执行，例如：8:05分执行后，分钟值随机为50，则会在8:50再次执行。
-- 如果配置了 `CRON_HOURS` Variable变量，则脚本将自动判断，例如8:05分执行后，将从小时中剔除8，即8:00-8:59都不会再重复执行，避免随机的步数混乱。
+1. 默认每天运行6+次，由 `run.yml` 中的 cron 控制小时。工作流在每个小时的第 5 分钟被唤醒，然后随机等待到第 5-50 分钟执行；随机等待不会修改 GitHub 的 schedule 配置。
 
 2. 多账户的数量和密码请一定要对上 不然无法使用!!!
 
@@ -185,21 +175,5 @@
   - 执行步骤中主要关注 `开始` ，点击 `开始` 展开详情
   - 展开后便可以查看到执行日志，如果执行成功，则会显示每个账号当前随机的步数是多少
   - 如果执行失败，则需要根据实际情况分析具体失败原因
-- 对于随机Cron的工作流 `Random Cron`，它会在 `刷步数` 执行成功后触发，执行后会更新cron表达式创建随机的分钟值，然后提交到git仓库。这一步失败的主要原因有：
-  - `PAT` Secret变量，也就是个人token设置的不正确
-  - `CRON_HOURS` Variable变量设置的不正确，需要逗号分隔的小时字符串例如：`1,3,4,5,6,7` 。不要添加奇奇怪怪的东西
-  - 其他请见执行日志
-- 随机Cron运行完毕后可以查看 `cron_change_time` 文件的内容，记录了触发方式、当前触发时间、cron表达式信息、下一次定时触发时间等信息，示例如下：
-  ```log
-  trigger by: workflow_run
-  current system time:
-  UTC: 23-06-03 12:56:53
-  北京时间: 23-06-03 20:56:53
-  current cron:
-  UTC时间: '48 1,4,7,10,12,14 * * *'
-  北京时间: '48 9,12,15,18,20,22 * * *'
-  next cron:
-  UTC时间: '37 1,4,7,10,12,14 * * *'
-  北京时间: '37 9,12,15,18,20,22 * * *'
-  next exec time: UTC(14:37) 北京时间(22:37)
-  ```
+- 随机等待由 `刷步数` 工作流内部完成，不再有单独的 `Random Cron` 工作流，也不会自动改写 workflow 文件。
+- 运行成功后可以查看 `cron_change_time` 文件，里面记录触发方式、实际执行时间、固定 cron 和随机等待信息。
