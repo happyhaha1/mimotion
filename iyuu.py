@@ -43,7 +43,8 @@ class IYUUClient:
             response = requests.post(
                 self.base_url,
                 headers=headers,
-                data=data
+                data=data,
+                timeout=10
             )
             
             # 返回响应的JSON

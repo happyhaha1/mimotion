@@ -94,7 +94,7 @@ def push_plus(title, content):
         "channel": "wechat"
     }
     try:
-        response = requests.post(requestUrl, data=data)
+        response = requests.post(requestUrl, data=data, timeout=10)
         if response.status_code == 200:
             json_res = response.json()
             print(f"pushplus推送完毕：{json_res['code']}-{json_res['msg']}")
@@ -286,10 +286,10 @@ def run_single_account(total, idx, user_mi, passwd_mi):
         exec_result = {"user": user_mi, "success": success,
                        "msg": exec_msg}
     except:
-        log_str += f"执行异常:{traceback.format_exc()}\n"
-        log_str += traceback.format_exc()
+        error = traceback.format_exc()
+        log_str += f"执行异常:{error}"
         exec_result = {"user": user_mi, "success": False,
-                       "msg": f"执行异常:{traceback.format_exc()}"}
+                       "msg": f"执行异常:{error}"}
     print(log_str)
     return exec_result
 

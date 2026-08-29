@@ -60,7 +60,7 @@ jobs:
             AES_KEY: ${{ secrets.AES_KEY }}
         run: |
           pip3 install requests pytz pycryptodome
-          python3 main.py
+          python3 -u main.py
 
       - name: 记录执行时间
         if: success()
