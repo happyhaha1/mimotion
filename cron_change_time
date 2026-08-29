@@ -1,6 +1,7 @@
-trigger by: workflow_dispatch
+trigger by: schedule
 current system time:
-UTC: 26-08-29 00:55:03
-北京时间: 26-08-29 08:55:03
+UTC: 26-08-29 04:35:09
+北京时间: 26-08-29 12:35:09
 stable cron: '5 1,4,8,9,12,14,23 * * *'
-random target minute: manual dispatch (no wait)
+random target minute: 28
+random wait seconds: 1288
