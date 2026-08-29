@@ -1,2 +1,6 @@
-此文件由 .github/workflows/run.yml 在每次成功执行后自动更新。
-随机分钟不再通过修改 GitHub Actions 的 schedule 实现，而是在工作流内部随机等待。
+trigger by: workflow_dispatch
+current system time:
+UTC: 26-08-29 00:55:03
+北京时间: 26-08-29 08:55:03
+stable cron: '5 1,4,8,9,12,14,23 * * *'
+random target minute: manual dispatch (no wait)
