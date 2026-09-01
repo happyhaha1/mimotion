@@ -408,12 +408,7 @@ if __name__ == "__main__":
         if users is None or passwords is None:
             print("未正确配置账号密码，无法执行")
             exit(1)
-        force_max_step = os.environ.get('FORCE_MAX_STEP', '').lower() == 'true'
-        if force_max_step:
-            print("晚间高步数时段，使用最大步数范围")
-            min_step, max_step = get_min_max_by_time(hour=22, minute=0)
-        else:
-            min_step, max_step = get_min_max_by_time()
+        min_step, max_step = get_min_max_by_time()
         use_concurrent = config.get('USE_CONCURRENT')
         if use_concurrent is not None and use_concurrent == 'True':
             use_concurrent = True

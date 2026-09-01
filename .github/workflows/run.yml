@@ -3,14 +3,15 @@ name: 刷步数
 on:
   # 只使用稳定的小时触发器；随机分钟在“随机等待”步骤中生成，避免运行时改写 schedule。
   schedule:
-    # 使用独立表达式，便于识别 UTC 14/15（北京时间 22/23 点）晚间高步数时段。
+    # 晚间使用三个独立候选，降低单个 schedule 丢失后错过峰值时段的概率。
     - cron: '17 1 * * *'
     - cron: '17 4 * * *'
     - cron: '17 8 * * *'
     - cron: '17 9 * * *'
     - cron: '17 12 * * *'
-    - cron: '17 14 * * *'
-    - cron: '17 15 * * *'
+    - cron: '37 13 * * *' # 北京时间 21:37，主候选
+    - cron: '37 14 * * *' # 北京时间 22:37，兜底候选
+    - cron: '37 15 * * *' # 北京时间 23:37，最后兜底
     - cron: '17 23 * * *'
   workflow_dispatch:
 
@@ -22,34 +23,72 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    # 即使 GitHub 将晚间任务延迟到 23 点以后，也按晚间时段使用最大步数范围。
     env:
-      FORCE_MAX_STEP: ${{ github.event.schedule == '17 14 * * *' || github.event.schedule == '17 15 * * *' }}
+      SCHEDULE_EXPRESSION: ${{ github.event.schedule }}
     steps:
       - name: 随机等待
         if: github.event_name == 'schedule'
         id: random-delay
         shell: bash
         run: |
-          # 固定触发在每小时第 17 分钟，随机目标限制在 17-50 分钟，
-          # 避开整点高负载，并给相邻小时的任务和 Git push 留出缓冲时间。
-          min_target_minute=17
-          max_target_minute=50
-          target_minute=$((min_target_minute + RANDOM % (max_target_minute - min_target_minute + 1)))
+          # 普通时段固定在 UTC 第 17 分钟触发，再随机等待到 17-50 分钟。
+          # 晚间候选使用第 37 分钟触发，避开整点高负载。
+          current_hour=$(date -u '+%H')
           current_minute=$(date -u '+%M')
           current_second=$(date -u '+%S')
+          current_hour=$((10#$current_hour))
           current_minute=$((10#$current_minute))
           current_second=$((10#$current_second))
           wait_seconds=0
-          if (( current_minute < target_minute )); then
-            wait_seconds=$(( (target_minute - current_minute) * 60 - current_second ))
-            if (( wait_seconds > 0 )); then
-              sleep "$wait_seconds"
-            fi
+          target_label=""
+
+          case "$SCHEDULE_EXPRESSION" in
+            '37 13 * * *')
+              # 北京时间 21:37 的主候选等待到 22:00-22:20，保证峰值发生在晚间。
+              target_minute=$((RANDOM % 21))
+              target_label="next-hour:${target_minute}"
+              if (( current_hour == 13 )); then
+                current_epoch=$(date -u '+%s')
+                target_epoch=$(( (current_epoch / 3600 + 1) * 3600 + target_minute * 60 ))
+                wait_seconds=$(( target_epoch - current_epoch ))
+              else
+                # 如果 GitHub 已经延迟到下一个小时，立即执行，不再额外等待。
+                target_label="immediate (late)"
+              fi
+              ;;
+            '37 14 * * *'|'37 15 * * *')
+              # 22:37、23:37 的兜底候选只在原定小时内随机等待，跨小时则立即执行。
+              min_target_minute=37
+              max_target_minute=50
+              target_minute=$((min_target_minute + RANDOM % (max_target_minute - min_target_minute + 1)))
+              target_label="$target_minute"
+              expected_hour=14
+              if [[ "$SCHEDULE_EXPRESSION" == '37 15 * * *' ]]; then
+                expected_hour=15
+              fi
+              if (( current_hour == expected_hour && current_minute < target_minute )); then
+                wait_seconds=$(( (target_minute - current_minute) * 60 - current_second ))
+              else
+                target_label="immediate (late)"
+              fi
+              ;;
+            *)
+              min_target_minute=17
+              max_target_minute=50
+              target_minute=$((min_target_minute + RANDOM % (max_target_minute - min_target_minute + 1)))
+              target_label="$target_minute"
+              if (( current_minute < target_minute )); then
+                wait_seconds=$(( (target_minute - current_minute) * 60 - current_second ))
+              fi
+              ;;
+          esac
+
+          if (( wait_seconds > 0 )); then
+            sleep "$wait_seconds"
           fi
-          echo "target_minute=${target_minute}" >> "$GITHUB_OUTPUT"
+          echo "target_minute=${target_label}" >> "$GITHUB_OUTPUT"
           echo "wait_seconds=${wait_seconds}" >> "$GITHUB_OUTPUT"
-          echo "随机目标时间：${target_minute} 分，等待 ${wait_seconds} 秒"
+          echo "目标时间：${target_label}，等待 ${wait_seconds} 秒"
 
       - name: Checkout codes
         uses: actions/checkout@v5
@@ -86,8 +125,8 @@ jobs:
             echo "current system time:"
             TZ=UTC date '+UTC: %y-%m-%d %H:%M:%S'
             TZ=Asia/Shanghai date '+北京时间: %y-%m-%d %H:%M:%S'
-            echo "stable cron: '17 1,4,8,9,12,14,15,23 * * *'"
-            echo "force max step: $FORCE_MAX_STEP"
+            echo "stable cron: regular UTC 17th minute; late candidates UTC 13:37/14:37/15:37"
+            echo "late strategy: primary waits for Beijing 22:00-22:20; delayed runs use current time"
             if [[ -n "$RANDOM_TARGET_MINUTE" ]]; then
               echo "random target minute: $RANDOM_TARGET_MINUTE"
               echo "random wait seconds: $RANDOM_WAIT_SECONDS"
