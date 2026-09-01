@@ -3,8 +3,15 @@ name: 刷步数
 on:
   # 只使用稳定的小时触发器；随机分钟在“随机等待”步骤中生成，避免运行时改写 schedule。
   schedule:
-    # UTC 14/15 对应北京时间 22/23 点，保留晚间高步数时段的兜底机会。
-    - cron: '17 1,4,8,9,12,14,15,23 * * *'
+    # 使用独立表达式，便于识别 UTC 14/15（北京时间 22/23 点）晚间高步数时段。
+    - cron: '17 1 * * *'
+    - cron: '17 4 * * *'
+    - cron: '17 8 * * *'
+    - cron: '17 9 * * *'
+    - cron: '17 12 * * *'
+    - cron: '17 14 * * *'
+    - cron: '17 15 * * *'
+    - cron: '17 23 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -15,6 +22,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    # 即使 GitHub 将晚间任务延迟到 23 点以后，也按晚间时段使用最大步数范围。
+    env:
+      FORCE_MAX_STEP: ${{ github.event.schedule == '17 14 * * *' || github.event.schedule == '17 15 * * *' }}
     steps:
       - name: 随机等待
         if: github.event_name == 'schedule'
@@ -72,10 +82,12 @@ jobs:
         run: |
           {
             echo "trigger by: ${{ github.event_name }}"
+            echo "schedule expression: ${{ github.event.schedule }}"
             echo "current system time:"
             TZ=UTC date '+UTC: %y-%m-%d %H:%M:%S'
             TZ=Asia/Shanghai date '+北京时间: %y-%m-%d %H:%M:%S'
             echo "stable cron: '17 1,4,8,9,12,14,15,23 * * *'"
+            echo "force max step: $FORCE_MAX_STEP"
             if [[ -n "$RANDOM_TARGET_MINUTE" ]]; then
               echo "random target minute: $RANDOM_TARGET_MINUTE"
               echo "random wait seconds: $RANDOM_WAIT_SECONDS"
