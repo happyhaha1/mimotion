@@ -1,9 +1,9 @@
 trigger by: schedule
-schedule expression: 17 12 * * *
+schedule expression: 37 13 * * *
 current system time:
-UTC: 26-10-01 18:36:19
-北京时间: 26-10-02 02:36:19
+UTC: 26-10-01 19:11:12
+北京时间: 26-10-02 03:11:12
 stable cron: regular UTC 17th minute; late candidates UTC 13:37/14:37/15:37
 late strategy: primary waits for Beijing 22:00-22:20; delayed runs use current time
-random target minute: 19
+random target minute: immediate (late)
 random wait seconds: 0
